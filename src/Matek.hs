@@ -38,6 +38,7 @@ module Matek
 
 import           Control.Monad.Primitive
 import           Control.Monad.ST
+import           Data.Foldable
 import           Data.List
 import           Data.Primitive
 import           Data.Proxy
@@ -116,15 +117,12 @@ fromListColumnMajor xs = createM $ \mba -> go mba xs 0
       go mba ys (n + 1)
     go _ _ _ = error ("Expected " ++ show elemNumber ++ " elements.")
 
-mMap :: IsM row col a => (a -> a) -> M row col a -> M row col a
-mMap f = fromListColumnMajor . map f . toListColumnMajor
-
-{-
-columnMajor :: forall space a. (Space row, Space col Scalar a) => M space a -> [ a ]
-columnMajor (M ba) = map (indexScalar ba) [0..spaceDims - 1]
+mMap :: (Space row, Space col, Scalar a, Scalar b) => (a -> b) -> M row col a -> M row col b
+mMap f m@(M ba) =
+  createM $ \mba -> forM_ [0..elems - 1] $ \i ->
+    writeScalar mba i $ f $ indexScalar ba i
   where
-    spaceDims = untag (dims @space)
--}
+    elems = rows m * cols m
 
 rows :: forall row col a. Space row => M row col a -> Int
 rows _ = untag (dims @row)
