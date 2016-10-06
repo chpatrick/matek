@@ -1,3 +1,4 @@
+{-# OPTIONS_GHC -fno-warn-unused-matches #-}
 {-# LANGUAGE StrictData #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE LambdaCase #-}
@@ -11,7 +12,6 @@ module Matek.Inline
 import           Data.Traversable
 import qualified Language.C.Inline.Unsafe as CU
 import           Language.Haskell.TH
-import           Language.Haskell.TH.Syntax
 import           Language.Haskell.TH.Quote
 import           Text.ParserCombinators.Parsec
 import           Text.ParserCombinators.Parsec.Language

@@ -36,42 +36,15 @@ module Matek
 
 import           Control.Monad.Primitive
 import           Control.Monad.ST
-import           Data.Int
 import           Data.List
 import           Data.Primitive
 import           Data.Proxy
 import           Data.Tagged
-import           Foreign.C
 import           GHC.Ptr
 import           GHC.TypeLits
-import           Numeric
 
-import qualified Language.C.Inline.Cpp as C
-
-import           Matek.Inline
 import           Matek.Types
-
-C.context C.cppCtx
-C.include "Eigen/Dense"
-
-
--- Generate specializations for the scalar types.
-mkScalar ''Double ''CDouble "double"
-mkScalar ''Float ''CFloat "float"
-mkScalar ''Int64 ''Int64 "int64_t"
-mkScalar ''Int32 ''Int32 "int32_t"
-
-showRealFloat :: RealFloat a => a -> String
-showRealFloat x = showGFloat (Just 4) x ""
-
-instance ShowScalar Double where
-  showScalar = showRealFloat
-instance ShowScalar Float where
-  showScalar = showRealFloat
-instance ShowScalar Int64 where
-  showScalar = show
-instance ShowScalar Int32 where
-  showScalar = show
+import           Matek.Scalars ()
 
 class KnownNat (Dims s) => Space s where
   type Dims s :: Nat
@@ -168,9 +141,6 @@ toRows m@(M ba) =
     ]
   | row <- [0..rows m - 1]
   ]
-
-class ShowScalar a where
-  showScalar :: a -> String
 
 showWith :: IsM row col a => (a -> String) -> M row col a -> String
 showWith showA m = intercalate "\n" formattedRows

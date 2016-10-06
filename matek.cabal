@@ -18,7 +18,8 @@ library
   exposed-modules:     Matek
                        Matek.Types
   other-modules:       Matek.Inline
-  c-sources:           src/Matek.cpp
+                       Matek.Scalars
+  c-sources:           src/Matek/Scalars.cpp
   build-depends:       base >= 4.7 && < 5, tagged, primitive, ghc-prim, inline-c, inline-c-cpp, template-haskell, parsec
   pkgconfig-depends:   eigen3
   extra-libraries:     stdc++

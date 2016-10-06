@@ -7,6 +7,8 @@
 
 module Matek.Types
   ( Scalar(..)
+  , ShowScalar(..)
+  , showRealFloat
   , Access(..)
   , CM(..)
   ) where
@@ -18,9 +20,10 @@ import           Data.Tagged
 import           Foreign.C
 import           GHC.Ptr
 import           GHC.Types
+import           Numeric
 
-type BinOpCM a = CM RW a -> CM R a -> CM R a -> IO ()
-type UnOpCM a = CM RW a -> CM R a -> IO ()
+type BinOpCM a = CM 'RW a -> CM 'R a -> CM 'R a -> IO ()
+type UnOpCM a = CM 'RW a -> CM 'R a -> IO ()
 
 class Scalar a where
   -- | The C equivalent of a (ie. Double -> CDouble).
@@ -57,6 +60,12 @@ class Scalar a where
   cmSignum :: UnOpCM a
   cmMap :: FunPtr (CScalar a -> IO (CScalar a)) -> UnOpCM a
   cmScale :: CScalar a -> UnOpCM a
+
+class ShowScalar a where
+  showScalar :: a -> String
+
+showRealFloat :: RealFloat a => a -> String
+showRealFloat x = showGFloat (Just 4) x ""
 
 data Access = R | RW
   deriving (Eq, Ord, Show) 
