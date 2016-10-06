@@ -223,6 +223,7 @@ unopCM f x =
   createCM $ \cr ->
     unsafeWithCM x $ \cx ->
       f cr cx
+{-# INLINE unopCM #-}
 
 (!*!) :: (Space s1, Space s2, Space s3, Scalar a) => M s3 s2 a -> M s2 s1 a -> M s3 s1 a
 (!*!) = binopCM cmMul
