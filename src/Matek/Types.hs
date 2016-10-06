@@ -46,6 +46,9 @@ class Scalar a where
   cmMinus :: BinOpCM a
   cmMul :: BinOpCM a
   cmTranspose :: UnOpCM a
+  cmAbs :: UnOpCM a
+  cmSignum :: UnOpCM a
+  cmMap :: FunPtr (CScalar a -> IO (CScalar a)) -> UnOpCM a
 
 data Access = R | RW
   deriving (Eq, Ord, Show) 

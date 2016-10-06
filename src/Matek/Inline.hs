@@ -20,12 +20,13 @@ import           Text.ParserCombinators.Parsec.Token
 import           Matek.Types
 
 data Token
-  = CharToken  Char
+  = CharToken Char
+  | TypeQuoteToken String
   | MapQuoteToken String Access
     deriving (Eq, Ord, Show)
 
 tokenize :: String -> [ Token ]
-tokenize s = case parse (many $ parseMapQuote <|> (CharToken <$> anyChar)) "" s of
+tokenize s = case parse (many $ try parseMapQuote <|> try parseTypeQuote <|> (CharToken <$> anyChar)) "" s of
   Left err -> error $ "impossibly failed to tokenize: " ++ show err
   Right ts -> ts
   where
@@ -37,6 +38,11 @@ tokenize s = case parse (many $ parseMapQuote <|> (CharToken <$> anyChar)) "" s 
       cmName <- identifier
       _ <- string ")"
       return $ MapQuoteToken cmName acc
+    parseTypeQuote = do
+      _ <- string "$type("
+      cmName <- identifier
+      _ <- string ")"
+      return $ TypeQuoteToken cmName
 
 -- like C.block but $map(r) (where r is a CM a) gets replaced with an Eigen Map with the given element type
 blockMap :: String -> (String -> ( Name, String )) -> Q Exp
@@ -65,6 +71,9 @@ blockMap cBlock mapTypeOf = do
             , "))"
             ]
       return ( replacement, [ ( ptrName, rowsName, colsName, mkName cmName, mapType, acc ) ] )
+    TypeQuoteToken cmName -> do
+      let ( _ , cType ) = mapTypeOf cmName
+      return ( cType, [] )
   let ( translatedCBlockStrings, cmBinds ) = unzip blockResults
   let translatedCBlock = concat translatedCBlockStrings
   let bindCMs = 
@@ -96,6 +105,9 @@ mkScalar scalarName cScalarName cType =
       cmMinus r x y = $(blockMap "void { $mapRW(r) = $mapR(x) - $mapR(y); }" (const ( scalarName, cType )))
       cmMul r x y = $(blockMap "void { $mapRW(r) = $mapR(x) * $mapR(y); }" (const ( scalarName, cType )))
       cmTranspose r x = $(blockMap "void { $mapRW(r) = $mapR(x).transpose(); }" (const ( scalarName, cType )))
+      cmAbs r x = $(blockMap "void { $mapRW(r).array() = $mapR(x).array().abs(); }" (const ( scalarName, cType )))
+      cmMap f r x = $(blockMap "void { $mapRW(r) = $mapR(x).unaryExpr(std::ptr_fun($($type(x) (*f)($type(x)) ))); }" (const ( scalarName, cType )))
+      cmSignum r x = $(blockMap "void { $mapRW(r) = $mapR(x).unaryExpr([]($type(x) n) { return ((n > 0 ? 1 : (n == 0 ? 0 : -1))); }); }" (const ( scalarName, cType )))
   |]
     where
       scalar = conT scalarName

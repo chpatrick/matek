@@ -24,6 +24,8 @@ module Matek
   , rows
   , cols
   , toRows
+  , toListColumnMajor
+  , mMap
   , createCM
   , unsafeWithCM
   , transpose
@@ -121,6 +123,9 @@ fromListColumnMajor xs = createM $ \mba -> go mba xs 0
       go mba ys (n + 1)
     go _ _ _ = error ("Expected " ++ show elemNumber ++ " elements.")
 
+mMap :: IsM row col a => (a -> a) -> M row col a -> M row col a
+mMap f = fromListColumnMajor . map f . toListColumnMajor
+
 {-
 columnMajor :: forall space a. (Space row, Space col Scalar a) => M space a -> [ a ]
 columnMajor (M ba) = map (indexScalar ba) [0..spaceDims - 1]
@@ -133,6 +138,11 @@ rows _ = untag (dims @row)
 
 cols :: forall row col a. Space col => M row col a -> Int
 cols _ = untag (dims @col)
+
+toListColumnMajor :: IsM row col a => M row col a -> [ a ]
+toListColumnMajor m@(M ba)
+  = map (indexScalar ba) [0..rows m * cols m - 1]
+{-# INLINE toListColumnMajor #-}
 
 toRows :: IsM row col a => M row col a -> [ [ a ] ]
 toRows m@(M ba) =
@@ -191,6 +201,8 @@ instance (KnownNat rows, KnownNat cols, Scalar a, Num a) => Num (M (S rows) (S c
   (+) = binopCM cmPlus
   (-) = binopCM cmMinus
   (*) = binopCM cmMul
+  abs = unopCM cmAbs
+  signum = unopCM cmSignum
   fromInteger x = fromList $ replicate (nRows * nCols) (fromInteger x)
     where
       nRows = fromIntegral $ natVal (Proxy @rows)
