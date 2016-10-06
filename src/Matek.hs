@@ -156,7 +156,7 @@ showWith showA m = intercalate "\n" formattedRows
     justify :: Int -> String -> String
     justify colWidth ns = replicate (colWidth - length ns) ' ' ++ ns
     addBorder :: [ String ] -> [ String ]
-    addBorder [] = []
+    addBorder [] = [ "[]" ]
     addBorder [x] = [ "[" ++ x ++ "]" ]
     addBorder (x : xs) = ("┌" ++ x ++ "┐") : addBorder' xs
     addBorder' [] = []
