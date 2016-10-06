@@ -21,10 +21,12 @@ module Matek
   , unsafeWithM
   , fromList
   , fromListColumnMajor
+  , toListColumnMajor
+  , fromVectorColumnMajor
+  , toVectorColumnMajor
   , rows
   , cols
   , toRows
-  , toListColumnMajor
   , mMap
   , createCM
   , unsafeWithCM
@@ -40,6 +42,7 @@ import           Data.List
 import           Data.Primitive
 import           Data.Proxy
 import           Data.Tagged
+import qualified Data.Vector.Primitive as VP
 import           GHC.Ptr
 import           GHC.TypeLits
 
@@ -133,6 +136,20 @@ toListColumnMajor :: IsM row col a => M row col a -> [ a ]
 toListColumnMajor m@(M ba)
   = map (indexScalar ba) [0..rows m * cols m - 1]
 {-# INLINE toListColumnMajor #-}
+
+-- Convert a matrix to a column-major Primitive.Vector without copying.
+toVectorColumnMajor :: IsM row col a => M row col a -> VP.Vector a
+toVectorColumnMajor m@(M ba) = VP.Vector 0 (rows m * cols m) ba
+
+-- Get a matrix from a column-major Primitive.Vector without copying.
+fromVectorColumnMajor :: forall row col a. (IsM row col a, Prim a) => VP.Vector a -> M row col a
+fromVectorColumnMajor vec
+ | VP.length vec == elems = case VP.force vec of
+    VP.Vector 0 _ ba -> M ba
+    _ -> error "Expected 0 offset in Vector."
+ | otherwise = error $ "Expected " ++ show elems ++ " elements."
+  where
+    elems = untag (dims @row) * untag (dims @col)
 
 toRows :: IsM row col a => M row col a -> [ [ a ] ]
 toRows m@(M ba) =

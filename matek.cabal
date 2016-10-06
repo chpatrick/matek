@@ -20,7 +20,15 @@ library
   other-modules:       Matek.Inline
                        Matek.Scalars
   c-sources:           src/Matek/Scalars.cpp
-  build-depends:       base >= 4.7 && < 5, tagged, primitive, ghc-prim, inline-c, inline-c-cpp, template-haskell, parsec
+  build-depends:       base >= 4.7 && < 5,
+                       tagged,
+                       primitive,
+                       ghc-prim,
+                       inline-c,
+                       inline-c-cpp,
+                       template-haskell,
+                       parsec,
+                       vector
   pkgconfig-depends:   eigen3
   extra-libraries:     stdc++
   default-language:    Haskell2010
