@@ -80,9 +80,9 @@ blockMap cBlock mapTypeOf = do
         [ letS
           [ valD
             (recP 'CM
-              [ fieldPat 'mData (varP ptrName)
-              , fieldPat 'mRows (varP rowsName)
-              , fieldPat 'mCols (varP colsName)
+              [ fieldPat 'cmData (varP ptrName)
+              , fieldPat 'cmRows (varP rowsName)
+              , fieldPat 'cmCols (varP colsName)
               ])
             (normalB [e| $(varE cmName) :: CM $(accType) $(mapTypeType) |] )
             []

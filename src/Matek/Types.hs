@@ -4,6 +4,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE StrictData #-}
 
 module Matek.Types
   ( Scalar(..)
@@ -72,7 +73,7 @@ data Access = R | RW
 
 -- | A C-friendly reference to @M a@.
 data CM (acc :: Access) a = CM
-  { mData :: Ptr (CScalar a)
-  , mRows :: CSize
-  , mCols :: CSize
+  { cmData :: {-# UNPACK #-} (Ptr (CScalar a))
+  , cmRows :: {-# UNPACK #-} CSize
+  , cmCols :: {-# UNPACK #-} CSize
   }

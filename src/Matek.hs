@@ -189,9 +189,9 @@ createCM populate =
   createM $ \mba ->
     case mutableByteArrayContents mba of
       Addr addr -> populate CM
-        { mData = Ptr addr
-        , mRows = fromIntegral (dims @row)
-        , mCols = fromIntegral (dims @col)
+        { cmData = Ptr addr
+        , cmRows = fromIntegral (dims @row)
+        , cmCols = fromIntegral (dims @col)
         }
 {-# INLINE createCM #-}
 
@@ -199,9 +199,9 @@ unsafeWithCM :: (IsM row col a, PrimMonad m) => M row col a -> (CM 'R a -> m b) 
 unsafeWithCM m f = do
   unsafeWithM m $ \mPtr ->
     f CM 
-      { mData = castPtr mPtr
-      , mRows = fromIntegral (rows m)
-      , mCols = fromIntegral (cols m) 
+      { cmData = castPtr mPtr
+      , cmRows = fromIntegral (rows m)
+      , cmCols = fromIntegral (cols m)
       }
 {-# INLINE unsafeWithCM #-}
 
