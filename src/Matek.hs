@@ -185,18 +185,18 @@ instance (IsM row col a, ShowScalar a) => Show (M row col a) where
   show = showWith showScalar
   showList xs = showString $ "[\n" ++ intercalate ",\n\n" (map show xs) ++ "\n]"
 
-createCM :: forall row col a. IsM row col a => (forall s. CM 'RW a -> ST s ()) -> M row col a
+createCM :: forall row col a. IsM row col a => (CM 'RW a -> IO ()) -> M row col a
 createCM populate = 
   createM $ \mba ->
     case mutableByteArrayContents mba of
-      Addr addr -> populate CM
+      Addr addr -> unsafePrimToPrim $ populate CM
         { cmData = Ptr addr
         , cmRows = fromIntegral (dims @row)
         , cmCols = fromIntegral (dims @col)
         }
 {-# INLINE createCM #-}
 
-unsafeWithCM :: (IsM row col a, PrimMonad m) => M row col a -> (CM 'R a -> m b) -> m b
+unsafeWithCM :: IsM row col a => M row col a -> (CM 'R a -> IO b) -> IO b
 unsafeWithCM m f = do
   unsafeWithM m $ \mPtr ->
     f CM 
@@ -207,22 +207,22 @@ unsafeWithCM m f = do
 {-# INLINE unsafeWithCM #-}
 
 binopCM :: ( Space s1, Space s2, Space s3, Space s4, Space s5, Space s6
-           , Scalar a, Scalar b, Scalar r, PrimBase m
-           ) => (CM 'RW r -> CM 'R a -> CM 'R b -> m ()) -> M s1 s2 a -> M s3 s4 b -> M s5 s6 r
+           , Scalar a, Scalar b, Scalar r
+           ) => (CM 'RW r -> CM 'R a -> CM 'R b -> IO ()) -> M s1 s2 a -> M s3 s4 b -> M s5 s6 r
 binopCM f x y =
   createCM $ \cr ->
     unsafeWithCM x $ \cx ->
       unsafeWithCM y $ \cy ->
-        unsafePrimToPrim (f cr cx cy)
+        f cr cx cy
 {-# INLINE binopCM #-}
 
 unopCM :: ( Space s1, Space s2, Space s3, Space s4
-          , Scalar a, Scalar r, PrimBase m
-          ) => (CM 'RW r -> CM 'R a -> m ()) -> M s1 s2 a -> M s3 s4 r  
+          , Scalar a, Scalar r
+          ) => (CM 'RW r -> CM 'R a -> IO ()) -> M s1 s2 a -> M s3 s4 r
 unopCM f x =
   createCM $ \cr ->
     unsafeWithCM x $ \cx ->
-      unsafePrimToPrim (f cr cx)
+      f cr cx
 
 (!*!) :: (Space s1, Space s2, Space s3, Scalar a) => M s3 s2 a -> M s2 s1 a -> M s3 s1 a
 (!*!) = binopCM cmMul
