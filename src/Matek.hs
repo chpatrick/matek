@@ -28,19 +28,23 @@ module Matek
   , mMap
   , createCM
   , unsafeWithCM
-  , transpose
+  , tr
   , (!*!)
+  , (^*)
+  , (*^)
   ) where
 
 import           Control.Monad.Primitive
 import           Control.Monad.ST
 import           Data.Int
+import           Data.List
 import           Data.Primitive
 import           Data.Proxy
 import           Data.Tagged
 import           Foreign.C
 import           GHC.Ptr
 import           GHC.TypeLits
+import           Numeric
 
 import qualified Language.C.Inline.Cpp as C
 
@@ -50,11 +54,24 @@ import           Matek.Types
 C.context C.cppCtx
 C.include "Eigen/Dense"
 
+
 -- Generate specializations for the scalar types.
 mkScalar ''Double ''CDouble "double"
 mkScalar ''Float ''CFloat "float"
 mkScalar ''Int64 ''Int64 "int64_t"
 mkScalar ''Int32 ''Int32 "int32_t"
+
+showRealFloat :: RealFloat a => a -> String
+showRealFloat x = showGFloat (Just 4) x ""
+
+instance ShowScalar Double where
+  showScalar = showRealFloat
+instance ShowScalar Float where
+  showScalar = showRealFloat
+instance ShowScalar Int64 where
+  showScalar = show
+instance ShowScalar Int32 where
+  showScalar = show
 
 class KnownNat (Dims s) => Space s where
   type Dims s :: Nat
@@ -152,8 +169,33 @@ toRows m@(M ba) =
   | row <- [0..rows m - 1]
   ]
 
-instance (Show a, IsM row col a) => Show (M row col a) where
-  show = unlines . map (unwords . map show) . toRows
+class ShowScalar a where
+  showScalar :: a -> String
+
+showWith :: IsM row col a => (a -> String) -> M row col a -> String
+showWith showA m = intercalate "\n" formattedRows
+  where
+    elemStringRows :: [[ String ]]
+    elemStringRows = map (map showA) (toRows m)
+    columnWidths :: [ Int ]
+    columnWidths = map (maximum . map length) $ transpose elemStringRows
+    formattedRows :: [ String ]
+    formattedRows = addBorder $ map formatRow elemStringRows
+    formatRow :: [ String ] -> String
+    formatRow row = intercalate "  " (zipWith justify columnWidths row)
+    justify :: Int -> String -> String
+    justify colWidth ns = replicate (colWidth - length ns) ' ' ++ ns
+    addBorder :: [ String ] -> [ String ]
+    addBorder [] = []
+    addBorder [x] = [ "[" ++ x ++ "]" ]
+    addBorder (x : xs) = ("┌" ++ x ++ "┐") : addBorder' xs
+    addBorder' [] = []
+    addBorder' [x] =  [ "└" ++ x ++ "┘" ]
+    addBorder' (x : xs) = ("│" ++ x ++ "│") : addBorder' xs
+
+instance (IsM row col a, ShowScalar a) => Show (M row col a) where
+  show = showWith showScalar
+  showList xs = showString $ "[\n" ++ intercalate ",\n\n" (map show xs) ++ "\n]"
 
 createCM :: forall row col a. IsM row col a => (forall s. CM 'RW a -> ST s ()) -> M row col a
 createCM populate = 
@@ -208,6 +250,14 @@ instance (KnownNat rows, KnownNat cols, Scalar a, Num a) => Num (M (S rows) (S c
       nRows = fromIntegral $ natVal (Proxy @rows)
       nCols = fromIntegral $ natVal (Proxy @cols)
 
-transpose :: IsM row col a => M row col a -> M col row a
-transpose = unopCM cmTranspose
+tr :: IsM row col a => M row col a -> M col row a
+tr = unopCM cmTranspose
+{-# INLINE tr #-}
 
+(*^) :: IsM row col a => a -> M row col a -> M row col a
+k *^ m = unopCM (cmScale (toCScalar k)) m
+{-# INLINE (*^) #-}
+
+(^*) :: IsM row col a => M row col a -> a -> M row col a
+(^*) = flip (*^)
+{-# INLINE (^*) #-}

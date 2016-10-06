@@ -108,6 +108,7 @@ mkScalar scalarName cScalarName cType =
       cmAbs r x = $(blockMap "void { $mapRW(r).array() = $mapR(x).array().abs(); }" (const ( scalarName, cType )))
       cmMap f r x = $(blockMap "void { $mapRW(r) = $mapR(x).unaryExpr(std::ptr_fun($($type(x) (*f)($type(x)) ))); }" (const ( scalarName, cType )))
       cmSignum r x = $(blockMap "void { $mapRW(r) = $mapR(x).unaryExpr([]($type(x) n) { return ((n > 0 ? 1 : (n == 0 ? 0 : -1))); }); }" (const ( scalarName, cType )))
+      cmScale k r x = $(blockMap "void { $mapRW(r) = $mapR(x) * $($type(x) k); }" (const ( scalarName, cType )))
   |]
     where
       scalar = conT scalarName

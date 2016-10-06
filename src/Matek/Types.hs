@@ -3,6 +3,7 @@
 {-# LANGUAGE MagicHash #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE FlexibleContexts #-}
 
 module Matek.Types
   ( Scalar(..)
@@ -11,6 +12,7 @@ module Matek.Types
   ) where
 
 import           Control.Monad.Primitive
+import           Data.Coerce
 import           Data.Primitive
 import           Data.Tagged
 import           Foreign.C
@@ -22,7 +24,12 @@ type UnOpCM a = CM RW a -> CM R a -> IO ()
 
 class Scalar a where
   -- | The C equivalent of a (ie. Double -> CDouble).
+  -- We assume the Storable representation of a and CScalar a is the same.
   type CScalar a
+
+  toCScalar :: a -> CScalar a
+  default toCScalar :: Coercible a (CScalar a) => a -> CScalar a
+  toCScalar = coerce
 
   -- Methods from Prim
   sizeofScalar :: Tagged a Int
@@ -49,6 +56,7 @@ class Scalar a where
   cmAbs :: UnOpCM a
   cmSignum :: UnOpCM a
   cmMap :: FunPtr (CScalar a -> IO (CScalar a)) -> UnOpCM a
+  cmScale :: CScalar a -> UnOpCM a
 
 data Access = R | RW
   deriving (Eq, Ord, Show) 
