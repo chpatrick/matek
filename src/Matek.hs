@@ -141,14 +141,15 @@ toListColumnMajor m@(M ba)
 toVectorColumnMajor :: IsM row col a => M row col a -> VP.Vector a
 toVectorColumnMajor m@(M ba) = VP.Vector 0 (rows m * cols m) ba
 
--- Get a matrix from a column-major Primitive.Vector without copying.
+-- Get a matrix from a column-major Primitive.Vector (copying).
 fromVectorColumnMajor :: forall row col a. (IsM row col a, Prim a) => VP.Vector a -> M row col a
-fromVectorColumnMajor vec
- | VP.length vec == elems = case VP.force vec of
-    VP.Vector 0 _ ba -> M ba
-    _ -> error "Expected 0 offset in Vector."
+fromVectorColumnMajor (VP.Vector off n vba)
+ | n == elems = createM $ \mba ->
+    -- Vector offset is in elements not bytes
+    copyByteArray mba 0 vba (off * scalarSize) (elems * scalarSize)
  | otherwise = error $ "Expected " ++ show elems ++ " elements."
   where
+    scalarSize = untag (sizeofScalar @a)
     elems = untag (dims @row) * untag (dims @col)
 
 toRows :: IsM row col a => M row col a -> [ [ a ] ]
