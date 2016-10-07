@@ -3,9 +3,11 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE QuasiQuotes #-}
 
 module Matek.Inline
   ( mkScalar
+  , mkDecomposable
   , blockMap
   ) where
 
@@ -16,6 +18,7 @@ import           Language.Haskell.TH.Quote
 import           Text.ParserCombinators.Parsec
 import           Text.ParserCombinators.Parsec.Language
 import           Text.ParserCombinators.Parsec.Token
+import qualified Text.RawString.QQ as RS
 
 import           Matek.Types
 
@@ -56,11 +59,11 @@ blockMap cBlock mapTypeOf = do
       let colsName = mkName (cmName ++ "_cmCols_inline")
       let ( mapType, cType ) = mapTypeOf cmName
       let replacement = concat
-            [ "Eigen::Map<"
+            [ "Map<"
             , case acc of { RW -> ""; R -> "const " }
-            , "Eigen::Matrix<"
+            , "Matrix<"
             , cType
-            , ", Eigen::Dynamic, Eigen::Dynamic>>($("
+            , ", Dynamic, Dynamic>>($("
             , cType
             , "* "
             , nameBase ptrName
@@ -101,15 +104,44 @@ mkScalar scalarName cScalarName cType =
     instance Scalar $(scalar) where
       type CScalar $(scalar) = $(cScalar)
 
-      cmPlus r x y = $(blockMap "void { $mapRW(r) = $mapR(x) + $mapR(y); }" (const ( scalarName, cType )))
-      cmMinus r x y = $(blockMap "void { $mapRW(r) = $mapR(x) - $mapR(y); }" (const ( scalarName, cType )))
-      cmMul r x y = $(blockMap "void { $mapRW(r) = $mapR(x) * $mapR(y); }" (const ( scalarName, cType )))
-      cmTranspose r x = $(blockMap "void { $mapRW(r) = $mapR(x).transpose(); }" (const ( scalarName, cType )))
-      cmAbs r x = $(blockMap "void { $mapRW(r).array() = $mapR(x).array().abs(); }" (const ( scalarName, cType )))
-      cmMap f r x = $(blockMap "void { $mapRW(r) = $mapR(x).unaryExpr(std::ptr_fun($($type(x) (*f)($type(x)) ))); }" (const ( scalarName, cType )))
-      cmSignum r x = $(blockMap "void { $mapRW(r) = $mapR(x).unaryExpr([]($type(x) n) { return ((n > 0 ? 1 : (n == 0 ? 0 : -1))); }); }" (const ( scalarName, cType )))
-      cmScale k r x = $(blockMap "void { $mapRW(r) = $mapR(x) * $($type(x) k); }" (const ( scalarName, cType )))
+      cmPlus r x y = $(blockMap [RS.r| void {
+          $mapRW(r) = $mapR(x) + $mapR(y);
+        } |] (const ( scalarName, cType )))
+      cmMinus r x y = $(blockMap [RS.r| void {
+          $mapRW(r) = $mapR(x) - $mapR(y);
+        } |] (const ( scalarName, cType )))
+      cmMul r x y = $(blockMap [RS.r| void {
+          $mapRW(r) = $mapR(x) * $mapR(y);
+        } |] (const ( scalarName, cType )))
+      cmTranspose r x = $(blockMap [RS.r| void {
+          $mapRW(r) = $mapR(x).transpose();
+        } |] (const ( scalarName, cType )))
+      cmAbs r x = $(blockMap [RS.r| void {
+          $mapRW(r).array() = $mapR(x).array().abs();
+        } |] (const ( scalarName, cType )))
+      cmMap f r x = $(blockMap [RS.r| void {
+          $mapRW(r) = $mapR(x).unaryExpr(std::ptr_fun($($type(x) (*f)($type(x)) )));
+        } |] (const ( scalarName, cType )))
+      cmSignum r x = $(blockMap [RS.r| void {
+          auto signum = []($type(x) n) { return n > 0 ? 1 : (n == 0 ? 0 : -1); };
+          $mapRW(r) = $mapR(x).unaryExpr(signum);
+        } |] (const ( scalarName, cType )))
+      cmScale k r x = $(blockMap [RS.r| void {
+          $mapRW(r) = $mapR(x) * $($type(x) k);
+        } |] (const ( scalarName, cType )))
   |]
     where
       scalar = conT scalarName
       cScalar = conT cScalarName
+
+mkDecomposable :: Name -> String -> DecsQ
+mkDecomposable scalarName cType =
+  [d|
+    instance Decomposable $(conT scalarName) where
+      cmFullSVD u s v m = $(blockMap [RS.r| void {
+          JacobiSVD<Matrix<$type(m), Dynamic, Dynamic>> svd($mapR(m), ComputeFullU | ComputeFullV);
+          $mapRW(u) = svd.matrixU();
+          $mapRW(s) = svd.singularValues();
+          $mapRW(v) = svd.matrixU();
+        } |] (const ( scalarName, cType )))
+  |]

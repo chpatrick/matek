@@ -15,11 +15,16 @@ import           Matek.Types
 C.context C.cppCtx
 C.include "Eigen/Dense"
 
+C.using "namespace Eigen"
+
 -- Generate specializations for the scalar types.
 mkScalar ''Double ''CDouble "double"
 mkScalar ''Float ''CFloat "float"
 mkScalar ''Int64 ''Int64 "int64_t"
 mkScalar ''Int32 ''Int32 "int32_t"
+
+mkDecomposable ''Double "double"
+mkDecomposable ''Float "float"
 
 instance ShowScalar Double where
   showScalar = showRealFloat

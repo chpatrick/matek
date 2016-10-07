@@ -7,11 +7,12 @@
 {-# LANGUAGE StrictData #-}
 
 module Matek.Types
-  ( Scalar(..)
+  ( CM(..)
+  , Scalar(..)
+  , Decomposable(..)
   , ShowScalar(..)
   , showRealFloat
   , Access(..)
-  , CM(..)
   ) where
 
 import           Control.Monad.Primitive
@@ -22,6 +23,16 @@ import           Foreign.C
 import           GHC.Ptr
 import           GHC.Types
 import           Numeric
+
+data Access = R | RW
+  deriving (Eq, Ord, Show)
+
+-- | A C-friendly reference to @M a@.
+data CM (acc :: Access) a = CM
+  { cmData :: {-# UNPACK #-} (Ptr (CScalar a))
+  , cmRows :: {-# UNPACK #-} CSize
+  , cmCols :: {-# UNPACK #-} CSize
+  }
 
 type BinOpCM a = CM 'RW a -> CM 'R a -> CM 'R a -> IO ()
 type UnOpCM a = CM 'RW a -> CM 'R a -> IO ()
@@ -68,12 +79,6 @@ class ShowScalar a where
 showRealFloat :: RealFloat a => a -> String
 showRealFloat x = showGFloat (Just 4) x ""
 
-data Access = R | RW
-  deriving (Eq, Ord, Show) 
-
--- | A C-friendly reference to @M a@.
-data CM (acc :: Access) a = CM
-  { cmData :: {-# UNPACK #-} (Ptr (CScalar a))
-  , cmRows :: {-# UNPACK #-} CSize
-  , cmCols :: {-# UNPACK #-} CSize
-  }
+class Scalar a => Decomposable a where
+  -- | Compute U, s, V from M
+  cmFullSVD :: CM 'RW a -> CM 'RW a -> CM 'RW a -> CM 'R a -> IO ()
