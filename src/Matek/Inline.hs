@@ -136,23 +136,10 @@ mkScalar scalarName cScalarName cType =
       cmScale k r x = $(blockMap [RS.r| void {
           $mapRW(r) = $mapR(x) * $($type(x) k);
         } |] (const ( scalarName, cType )))
-      cmFromBlocks r blockCount blockDataPtr blockRowsPtr blockColsPtr = do
-        $(blockMap [RS.r| void {
-            typedef Map<Matrix<$type(r), Dynamic, Dynamic>> MapR;
-
-            // unfortunately Eigen complains if we're const-correct here
-            auto blockData = $($type(r)(** blockDataPtr));
-            auto blockRows = $(size_t* blockRowsPtr);
-            auto blockCols = $(size_t* blockColsPtr);
-            size_t blockCount = $(size_t blockCount);
-
-            MapR r = $mapRW(r);
-            CommaInitializer<MapR> comma = r.operator<<(MapR(blockData[0], blockRows[0], blockCols[0]));
-
-            for (size_t blockIndex = 1; blockIndex < blockCount; blockCount++) {
-              comma.operator,(MapR(blockData[blockIndex], blockRows[blockIndex], blockCols[blockIndex]));
-            }
-          } |] (const ( scalarName, cType )))
+      cmCopyBlock r dstRow dstCol x = $(blockMap [RS.r| void {
+          auto src = $mapR(x);
+          $mapRW(r).block($(size_t dstRow), $(size_t dstCol), src.rows(), src.cols()) = src;
+        } |] (const ( scalarName, cType )))
   |]
     where
       scalar = conT scalarName

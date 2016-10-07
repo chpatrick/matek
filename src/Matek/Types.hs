@@ -86,7 +86,8 @@ class Scalar a where
   cmSignum :: UnOpCM a
   cmMap :: FunPtr (CScalar a -> IO (CScalar a)) -> UnOpCM a
   cmScale :: CScalar a -> UnOpCM a
-  cmFromBlocks :: CM 'RW a -> CSize -> Ptr (Ptr (CScalar a)) -> Ptr CSize -> Ptr CSize -> IO ()
+  -- cmCopyBlock dst dstRow dstCol src
+  cmCopyBlock :: CM 'RW a -> CSize -> CSize -> CM 'R a -> IO ()
 
 class ShowScalar a where
   showScalar :: a -> String

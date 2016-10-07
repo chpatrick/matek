@@ -35,7 +35,7 @@ module Matek
   , (!*!)
   , (^*)
   , (*^)
-  , FromBlocks(..)
+  , FromBlocks
   , fromBlocks
   ) where
 
@@ -47,7 +47,7 @@ import           Data.Primitive
 import           Data.Proxy
 import           Data.Tagged
 import qualified Data.Vector.Primitive as VP
-import           Foreign
+import           Foreign.C
 import           GHC.Ptr
 import           GHC.Stack
 import           GHC.TypeLits
@@ -256,26 +256,37 @@ k *^ m = unopCM (cmScale (toCScalar k)) m
 
 class FromBlocks a where
   type FromBlocksScalar a
-  doFromBlocks :: HasCallStack => ContT () IO [ CM 'R (FromBlocksScalar a) ] -> a
+  doFromBlocks :: HasCallStack => (CM 'RW (FromBlocksScalar a) -> IO ( Maybe ( CSize, CSize ), CSize )) -> a
 
 instance IsM row col a => FromBlocks (M row col a) where
   type FromBlocksScalar (M row col a) = a
-  doFromBlocks blocksCont =
-    createCM $ \r ->
-      runContT blocksCont $ \blocks -> do
-        let ( blockData, blockRows, blockCols ) = unzip3 $
-              map (\CM{..} -> ( cmData, cmRows, cmCols )) (reverse blocks)
-        withArrayLen blockData $ \blockCount blockDataPtr ->
-          withArray blockRows $ \blockRowsPtr ->
-            withArray blockCols $ \blockColsPtr -> do
-              unless (blockCount >= 1) (error "No blocks provided!")
-              let c'blockCount = fromIntegral blockCount
-              cmFromBlocks r c'blockCount blockDataPtr blockRowsPtr blockColsPtr
+  doFromBlocks copyBlocks = createCM $ \r -> do
+    copyResult <- copyBlocks r
+    case copyResult of
+      ( Nothing, finalRow ) ->
+        when (finalRow < fromIntegral (untag (dims @row))) $ error "Didn't provide enough rows."
+      _ -> error "Didn't provide enough blocks."
 
-instance (IsM row col a, FromBlocks next, a ~ FromBlocksScalar next) => FromBlocks (M row col a -> next) where
-  type FromBlocksScalar (M row col a -> next) = a
-  doFromBlocks blocksCont m = do
-    doFromBlocks ((:) <$> ContT (unsafeWithCM m) <*> blocksCont)
+instance (IsM row col a, FromBlocks fb, a ~ FromBlocksScalar fb) => FromBlocks (M row col a -> fb) where
+  type FromBlocksScalar (M row col a -> next) = FromBlocksScalar next
+  doFromBlocks copyBlocks m = doFromBlocks $ \res -> do
+    ( m'colAndBlockSize, currentRow ) <- copyBlocks res
 
-fromBlocks :: (HasCallStack, FromBlocks a) => a
-fromBlocks = doFromBlocks (pure [])
+    let CM { cmRows = resRows, cmCols = resCols } = res
+    unsafeWithCM m $ \cm@CM{..} -> do
+      let currentCol = case m'colAndBlockSize of
+            Nothing -- we're starting a new row of blocks
+              | currentRow + cmRows > resRows -> error "Too many rows provided."
+              | otherwise -> 00
+            Just ( col, blockSize ) -- we're in a row of blocks
+              | blockSize /= cmRows -> error "Inconsistent block row numbers."
+              | otherwise -> col
+      when (currentCol + cmCols > resCols) $
+        error "Too many columns specified."
+      cmCopyBlock res currentRow currentCol cm
+      return $ if currentCol + cmCols == resCols
+        then ( Nothing, (currentRow + cmRows) )
+        else ( Just ( currentCol + cmCols, cmRows ), currentRow )
+
+fromBlocks :: (HasCallStack, FromBlocks fb) => fb
+fromBlocks = doFromBlocks (\_ -> pure ( Nothing, 0 ))
