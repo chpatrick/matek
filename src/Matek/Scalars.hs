@@ -2,6 +2,7 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE RecordWildCards #-}
 
 module Matek.Scalars() where
 
@@ -12,7 +13,9 @@ import qualified Language.C.Inline.Cpp as C
 import           Matek.Inline
 import           Matek.Types
 
-C.context C.cppCtx
+C.context matekCtx
+C.include "matek_exceptions.h"
+
 C.include "Eigen/Dense"
 
 C.using "namespace Eigen"

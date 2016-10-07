@@ -8,6 +8,8 @@
 
 module Matek.Types
   ( CM(..)
+  , CEigenException(..)
+  , matekCatch
   , Scalar(..)
   , Decomposable(..)
   , ShowScalar(..)
@@ -15,11 +17,14 @@ module Matek.Types
   , Access(..)
   ) where
 
+import           Control.Exception
+import           Control.Monad
 import           Control.Monad.Primitive
 import           Data.Coerce
 import           Data.Primitive
 import           Data.Tagged
 import           Foreign.C
+import           GHC.Stack
 import           GHC.Ptr
 import           GHC.Types
 import           Numeric
@@ -36,6 +41,15 @@ data CM (acc :: Access) a = CM
 
 type BinOpCM a = CM 'RW a -> CM 'R a -> CM 'R a -> IO ()
 type UnOpCM a = CM 'RW a -> CM 'R a -> IO ()
+
+newtype CEigenException = CEigenException CString
+
+matekCatch :: HasCallStack => IO CEigenException -> IO ()
+matekCatch m = do
+  CEigenException res <- m
+  when (res /= nullPtr) $ do
+    msg <- peekCString res
+    error msg
 
 class Scalar a where
   -- | The C equivalent of a (ie. Double -> CDouble).
@@ -72,6 +86,7 @@ class Scalar a where
   cmSignum :: UnOpCM a
   cmMap :: FunPtr (CScalar a -> IO (CScalar a)) -> UnOpCM a
   cmScale :: CScalar a -> UnOpCM a
+  cmFromBlocks :: CM 'RW a -> CSize -> Ptr (Ptr (CScalar a)) -> Ptr CSize -> Ptr CSize -> IO ()
 
 class ShowScalar a where
   showScalar :: a -> String

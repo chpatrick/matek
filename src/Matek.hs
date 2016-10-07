@@ -10,6 +10,7 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE RecordWildCards #-}
 
 module Matek
   ( Space(..)
@@ -34,17 +35,21 @@ module Matek
   , (!*!)
   , (^*)
   , (*^)
+  , FromBlocks(..)
+  , fromBlocks
   ) where
 
+import           Control.Monad.Cont
 import           Control.Monad.Primitive
 import           Control.Monad.ST
-import           Data.Foldable
 import           Data.List
 import           Data.Primitive
 import           Data.Proxy
 import           Data.Tagged
 import qualified Data.Vector.Primitive as VP
+import           Foreign
 import           GHC.Ptr
+import           GHC.Stack
 import           GHC.TypeLits
 
 import           Matek.Types
@@ -248,3 +253,29 @@ k *^ m = unopCM (cmScale (toCScalar k)) m
 (^*) :: IsM row col a => M row col a -> a -> M row col a
 (^*) = flip (*^)
 {-# INLINE (^*) #-}
+
+class FromBlocks a where
+  type FromBlocksScalar a
+  doFromBlocks :: HasCallStack => ContT () IO [ CM 'R (FromBlocksScalar a) ] -> a
+
+instance IsM row col a => FromBlocks (M row col a) where
+  type FromBlocksScalar (M row col a) = a
+  doFromBlocks blocksCont =
+    createCM $ \r ->
+      runContT blocksCont $ \blocks -> do
+        let ( blockData, blockRows, blockCols ) = unzip3 $
+              map (\CM{..} -> ( cmData, cmRows, cmCols )) (reverse blocks)
+        withArrayLen blockData $ \blockCount blockDataPtr ->
+          withArray blockRows $ \blockRowsPtr ->
+            withArray blockCols $ \blockColsPtr -> do
+              unless (blockCount >= 1) (error "No blocks provided!")
+              let c'blockCount = fromIntegral blockCount
+              cmFromBlocks r c'blockCount blockDataPtr blockRowsPtr blockColsPtr
+
+instance (IsM row col a, FromBlocks next, a ~ FromBlocksScalar next) => FromBlocks (M row col a -> next) where
+  type FromBlocksScalar (M row col a -> next) = a
+  doFromBlocks blocksCont m = do
+    doFromBlocks ((:) <$> ContT (unsafeWithCM m) <*> blocksCont)
+
+fromBlocks :: (HasCallStack, FromBlocks a) => a
+fromBlocks = doFromBlocks (pure [])

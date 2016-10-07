@@ -29,9 +29,20 @@ library
                        template-haskell,
                        parsec,
                        vector,
-                       raw-strings-qq
+                       raw-strings-qq,
+                       mtl,
+                       containers
   pkgconfig-depends:   eigen3
   extra-libraries:     stdc++
+  include-dirs:        cbits
   default-language:    Haskell2010
   ghc-options:         -Wall
-  cc-options:          -O2 -std=c++11 -Wall
+  cc-options:          -g -std=c++11 -Wall -fexceptions
+
+executable test
+  hs-source-dirs:      app
+  main-is:             test.hs
+  ghc-options:         -Wall
+  cc-options:          -g -std=c++11 -Wall -fexceptions
+  build-depends:       base, matek
+  default-language:    Haskell2010

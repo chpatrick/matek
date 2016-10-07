@@ -4,15 +4,22 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 module Matek.Inline
   ( mkScalar
   , mkDecomposable
   , blockMap
+  , matekCtx
   ) where
 
+import qualified Data.Map as M
+import           Data.Monoid
 import           Data.Traversable
+import qualified Language.C.Inline.Context as C
 import qualified Language.C.Inline.Unsafe as CU
+import qualified Language.C.Inline.Cpp as C
+import qualified Language.C.Types as C
 import           Language.Haskell.TH
 import           Language.Haskell.TH.Quote
 import           Text.ParserCombinators.Parsec
@@ -129,6 +136,23 @@ mkScalar scalarName cScalarName cType =
       cmScale k r x = $(blockMap [RS.r| void {
           $mapRW(r) = $mapR(x) * $($type(x) k);
         } |] (const ( scalarName, cType )))
+      cmFromBlocks r blockCount blockDataPtr blockRowsPtr blockColsPtr = do
+        $(blockMap [RS.r| void {
+            typedef Map<Matrix<$type(r), Dynamic, Dynamic>> MapR;
+
+            // unfortunately Eigen complains if we're const-correct here
+            auto blockData = $($type(r)(** blockDataPtr));
+            auto blockRows = $(size_t* blockRowsPtr);
+            auto blockCols = $(size_t* blockColsPtr);
+            size_t blockCount = $(size_t blockCount);
+
+            MapR r = $mapRW(r);
+            CommaInitializer<MapR> comma = r.operator<<(MapR(blockData[0], blockRows[0], blockCols[0]));
+
+            for (size_t blockIndex = 1; blockIndex < blockCount; blockCount++) {
+              comma.operator,(MapR(blockData[blockIndex], blockRows[blockIndex], blockCols[blockIndex]));
+            }
+          } |] (const ( scalarName, cType )))
   |]
     where
       scalar = conT scalarName
@@ -145,3 +169,13 @@ mkDecomposable scalarName cType =
           $mapRW(v) = svd.matrixU();
         } |] (const ( scalarName, cType )))
   |]
+
+matekTypesTable :: M.Map C.TypeSpecifier TypeQ
+matekTypesTable = M.fromList
+  [ (C.TypeName "CEigenException", [t| CEigenException |]) -- needs a typedef
+  ]
+
+matekCtx :: C.Context
+matekCtx = C.cppCtx <> ctx
+  where
+    ctx = mempty { C.ctxTypesTable = matekTypesTable }
