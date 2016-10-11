@@ -34,6 +34,7 @@ module Matek
   , unsafeWithCM
   , tr
   , (!*!)
+  , HasNum
   , (^*)
   , (*^)
   , FromBlocks
@@ -225,7 +226,14 @@ unopCM f x =
 (!*!) :: (IsMatrix s3 s1 a, IsMatrix s2 s1 a, IsMatrix s3 s2 a) => Matrix s3 s2 a -> Matrix s2 s1 a -> Matrix s3 s1 a
 (!*!) = binopCM cmGenMul
 
-instance (IsMatrix (S rows) (S cols) a, Num a) => Num (Matrix (S rows) (S cols) a) where
+-- We want to allow Num on row vectors, column vectors and anonymous matrices,
+-- but not on matrices with specific spaces.
+type family HasNum row col where
+  HasNum (S rows) col = 'True
+  HasNum row (S cols) = 'True
+  HasNum row col = 'False
+
+instance (IsMatrix row col a, HasNum row col ~ 'True, Num a) => Num (Matrix row col a) where
   (+) = binopCM cmPlus
   (-) = binopCM cmMinus
   (*) = binopCM cmCoeffMul
@@ -233,8 +241,8 @@ instance (IsMatrix (S rows) (S cols) a, Num a) => Num (Matrix (S rows) (S cols) 
   signum = unopCM cmSignum
   fromInteger x = fromList $ replicate (nRows * nCols) (fromInteger x)
     where
-      nRows = fromIntegral $ natVal (Proxy @rows)
-      nCols = fromIntegral $ natVal (Proxy @cols)
+      nRows = untag (dims @row)
+      nCols = untag (dims @col)
 
 tr :: (IsMatrix row col a, IsMatrix col row a) => Matrix row col a -> Matrix col row a
 tr = unopCM cmTranspose
@@ -243,10 +251,12 @@ tr = unopCM cmTranspose
 (*^) :: IsMatrix row col a => a -> Matrix row col a -> Matrix row col a
 k *^ m = unopCM (cmScale (toCScalar k)) m
 {-# INLINE (*^) #-}
+infixl 7 *^
 
 (^*) :: IsMatrix row col a => Matrix row col a -> a -> Matrix row col a
 (^*) = flip (*^)
 {-# INLINE (^*) #-}
+infixl 7 ^*
 
 class FromBlocks a where
   type FromBlocksScalar a
