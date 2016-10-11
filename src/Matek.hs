@@ -77,6 +77,19 @@ dims = fromIntegral (natVal (Proxy @(Dims s)))
 -- in column-major order
 newtype Matrix row col a = Matrix ByteArray
 
+instance (Eq a, IsMatrix row col a) => Eq (Matrix row col a) where
+  mx@(Matrix x) == Matrix y = all (\i -> indexScalar @a x i == indexScalar y i) [0..rows mx * cols mx - 1]
+
+instance (Ord a, IsMatrix row col a) => Ord (Matrix row col a) where
+  mx@(Matrix x) `compare` Matrix y = go 0
+    where
+      go i
+        | i >= rows mx * cols mx = EQ
+        | otherwise = case indexScalar @a x i `compare` indexScalar y i of
+          LT -> LT
+          GT -> GT
+          EQ -> go (i + 1)
+
 type IsMatrix row col a = (Space row, Space col, MatrixSpec (Dims row) (Dims col) a)
 
 type Vector space = Matrix space (S 1)
