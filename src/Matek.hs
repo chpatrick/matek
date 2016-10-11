@@ -12,6 +12,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE TypeOperators #-}
 
 module Matek
   ( Space(..)
@@ -39,6 +40,8 @@ module Matek
   , (*^)
   , FromBlocks
   , fromBlocks
+  , CoercibleSpace
+  , coerceMatrix
   ) where
 
 import           Control.Monad.Cont
@@ -314,3 +317,8 @@ instance ( IsMatrix row col a
 --
 fromBlocks :: (HasCallStack, FromBlocks fb) => fb
 fromBlocks = doFromBlocks (\_ -> pure ( Nothing, 0 ))
+
+type CoercibleSpace row col otherRow otherCol = ((Dims row * Dims col) ~ (Dims otherRow * Dims otherCol))
+
+coerceMatrix :: CoercibleSpace row col otherRow otherCol => Matrix row col a -> Matrix otherRow otherCol a
+coerceMatrix (Matrix ba) = Matrix ba
