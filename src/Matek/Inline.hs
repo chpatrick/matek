@@ -40,7 +40,7 @@ tokenize s = case parse (many $ try parseMapQuote <|> try parseTypeQuote <|> (Ch
   Left err -> error $ "impossibly failed to tokenize: " ++ show err
   Right ts -> ts
   where
-    TokenParser {..} = makeTokenParser haskellDef 
+    TokenParser {..} = makeTokenParser haskellDef
     parseMapQuote = do
       _ <- string "$map"
       acc <- (RW <$ try (string "RW")) <|> (R <$ string "R")
@@ -54,7 +54,7 @@ tokenize s = case parse (many $ try parseMapQuote <|> try parseTypeQuote <|> (Ch
       _ <- string ")"
       return $ TypeQuoteToken cmName
 
--- like C.block but $map(r) (where r is a CM a) gets replaced with an Eigen Map with the given element type
+-- like C.block but $map(r) (where r is a CMatrix a) gets replaced with an Eigen Map with the given element type
 blockMap :: String -> (String -> ( Name, String )) -> Q Exp
 blockMap cBlock mapTypeOf = do
   let cBlockTokens = tokenize cBlock
@@ -86,15 +86,15 @@ blockMap cBlock mapTypeOf = do
       return ( cType, [] )
   let ( translatedCBlockStrings, cmBinds ) = unzip blockResults
   let translatedCBlock = concat translatedCBlockStrings
-  let bindCMs = 
+  let bindCMs =
         [ letS
           [ valD
-            (recP 'CM
+            (recP 'CMatrix
               [ fieldPat 'cmData (varP ptrName)
               , fieldPat 'cmRows (varP rowsName)
               , fieldPat 'cmCols (varP colsName)
               ])
-            (normalB [e| $(varE cmName) :: CM $(accType) $(mapTypeType) |] )
+            (normalB [e| $(varE cmName) :: CMatrix $(accType) $(mapTypeType) |] )
             []
           ]
         | ( ptrName, rowsName, colsName, cmName, mapType, acc ) <- concat cmBinds

@@ -7,7 +7,7 @@
 {-# LANGUAGE StrictData #-}
 
 module Matek.Types
-  ( CM(..)
+  ( CMatrix(..)
   , CEigenException(..)
   , matekCatch
   , Scalar(..)
@@ -17,7 +17,6 @@ module Matek.Types
   , Access(..)
   ) where
 
-import           Control.Exception
 import           Control.Monad
 import           Control.Monad.Primitive
 import           Data.Coerce
@@ -33,14 +32,14 @@ data Access = R | RW
   deriving (Eq, Ord, Show)
 
 -- | A C-friendly reference to @M a@.
-data CM (acc :: Access) a = CM
+data CMatrix (acc :: Access) a = CMatrix
   { cmData :: {-# UNPACK #-} (Ptr (CScalar a))
   , cmRows :: {-# UNPACK #-} CSize
   , cmCols :: {-# UNPACK #-} CSize
   }
 
-type BinOpCM a = CM 'RW a -> CM 'R a -> CM 'R a -> IO ()
-type UnOpCM a = CM 'RW a -> CM 'R a -> IO ()
+type BinOpCM a = CMatrix 'RW a -> CMatrix 'R a -> CMatrix 'R a -> IO ()
+type UnOpCM a = CMatrix 'RW a -> CMatrix 'R a -> IO ()
 
 newtype CEigenException = CEigenException CString
 
@@ -77,7 +76,7 @@ class Scalar a where
   default indexScalar :: Prim a => ByteArray -> Int -> a
   indexScalar = indexByteArray
 
-  -- Specialized operations on CM a
+  -- Specialized operations on CMatrix a
   cmPlus :: BinOpCM a
   cmMinus :: BinOpCM a
   cmMul :: BinOpCM a
@@ -87,7 +86,7 @@ class Scalar a where
   cmMap :: FunPtr (CScalar a -> IO (CScalar a)) -> UnOpCM a
   cmScale :: CScalar a -> UnOpCM a
   -- cmCopyBlock dst dstRow dstCol src
-  cmCopyBlock :: CM 'RW a -> CSize -> CSize -> CM 'R a -> IO ()
+  cmCopyBlock :: CMatrix 'RW a -> CSize -> CSize -> CMatrix 'R a -> IO ()
 
 class ShowScalar a where
   showScalar :: a -> String
@@ -97,4 +96,4 @@ showRealFloat x = showGFloat (Just 4) x ""
 
 class Scalar a => Decomposable a where
   -- | Compute U, s, V from M
-  cmFullSVD :: CM 'RW a -> CM 'RW a -> CM 'RW a -> CM 'R a -> IO ()
+  cmFullSVD :: CMatrix 'RW a -> CMatrix 'RW a -> CMatrix 'RW a -> CMatrix 'R a -> IO ()
