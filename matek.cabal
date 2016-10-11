@@ -15,7 +15,7 @@ cabal-version:       >=1.10
 
 flag optimize-native
   description:         Optimize Matek for the local architecture (important for SSE, etc).
-  default:             False
+  default:             True
 
 library
   hs-source-dirs:      src
