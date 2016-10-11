@@ -3,6 +3,9 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE ConstraintKinds #-}
 
 module Matek.Scalars() where
 
@@ -21,13 +24,32 @@ C.include "Eigen/Dense"
 C.using "namespace Eigen"
 
 -- Generate specializations for the scalar types.
-mkScalar ''Double ''CDouble "double"
-mkScalar ''Float ''CFloat "float"
-mkScalar ''Int64 ''Int64 "int64_t"
-mkScalar ''Int32 ''Int32 "int32_t"
+instance Scalar Double where
+  type CScalar Double = CDouble
+mkSpecs [t|Double|] "double"
+  [ ( 2, 1 )
+  , ( 3, 1 )
+  , ( 4, 1 )
+  ]
 
-mkDecomposable ''Double "double"
-mkDecomposable ''Float "float"
+instance Scalar Float where
+  type CScalar Float = CFloat
+mkSpecs [t|Float|] "float"
+  [ ( 2, 1 )
+  , ( 3, 1 )
+  , ( 4, 1 )
+  ]
+
+instance Scalar Int64 where
+  type CScalar Int64 = Int64
+mkSpecs [t|Int64|] "int64_t" []
+
+instance Scalar Int32 where
+  type CScalar Int32 = Int32
+mkSpecs [t|Int32|] "int32_t" []
+
+mkDecomposable [t|Double|] "double"
+mkDecomposable [t|Float|] "float"
 
 instance ShowScalar Double where
   showScalar = showRealFloat
