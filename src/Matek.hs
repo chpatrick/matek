@@ -11,6 +11,7 @@
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE TypeOperators #-}
 
 module Matek
   ( Space(..)
@@ -38,6 +39,8 @@ module Matek
   , (*^)
   , FromBlocks
   , fromBlocks
+  , CoercibleSpace
+  , coerceMatrix
   ) where
 
 import           Control.Monad.Cont
@@ -300,5 +303,18 @@ instance (IsMatrix row col a, FromBlocks fb, a ~ FromBlocksScalar fb) => FromBlo
         then ( Nothing, (currentRow + cmRows) )
         else ( Just ( currentCol + cmCols, cmRows ), currentRow )
 
+-- | Assemble a matrix from smaller ones by providing them in top-to-bottom, left-to-right order.
+--
+-- > let v = fromList [1..4] :: Matrix (S 2) (S 2) Double in fromBlocks v v v v :: Matrix (S 4) (S 4) Double
+-- > ┌1.0000  2.0000  1.0000  2.0000┐
+-- > │3.0000  4.0000  3.0000  4.0000│
+-- > │1.0000  2.0000  1.0000  2.0000│
+-- > └3.0000  4.0000  3.0000  4.0000┘
+--
 fromBlocks :: (HasCallStack, FromBlocks fb) => fb
 fromBlocks = doFromBlocks (\_ -> pure ( Nothing, 0 ))
+
+type CoercibleSpace row col otherRow otherCol = ((Dims row * Dims col) ~ (Dims otherRow * Dims otherCol))
+
+coerceMatrix :: CoercibleSpace row col otherRow otherCol => Matrix row col a -> Matrix otherRow otherCol a
+coerceMatrix (Matrix ba) = Matrix ba
