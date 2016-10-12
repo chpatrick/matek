@@ -18,6 +18,7 @@ module Matek
   , dims
   , S
   , Matrix(..)
+  , IsMatrix
   , Vector
   , createM
   , unsafeWithM
