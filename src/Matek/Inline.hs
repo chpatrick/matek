@@ -138,81 +138,101 @@ blockMap cBlock mapTypeOf = do
 
 mkSpec :: TypeQ -> String -> Maybe ( Int, Int ) -> DecsQ
 mkSpec scalarType cType m'staticSize =
-  [d|
-    instance {-# OVERLAPPABLE #-} $(constraint) => MatrixSpec $(rowsType) $(colsType) $(scalarType) where
-      cmPlus r x y = $(blockMap [RS.r| void {
-          auto r= $mapRW(r);
-          r = $mapR(x) + $mapR(y);
-        } |] (const ( scalarType, cType, m'staticSize )))
+  case m'staticSize of
+    Nothing ->
+      [d|
+        instance {-# OVERLAPPABLE #-} (KnownNat rows, KnownNat cols) => MatrixSpec rows cols $(scalarType) where
+          cmPlus = $qcmPlus
+          cmMinus = $qcmMinus
+          cmGenMul = $qcmGenMul
+          cmCoeffMul = $qcmCoeffMul
+          cmTranspose = $qcmTranspose
+          cmAbs = $qcmAbs
+          cmMap = $qcmMap
+          cmSignum = $qcmSignum
+          cmScale = $qcmScale
+          cmCopyBlock = $qcmCopyBlock
+        |]
+    Just ( rows, cols ) ->
+      [d|
+        instance {-# OVERLAPPING #-} MatrixSpec $(rowsType) $(colsType) $(scalarType) where
+          cmPlus = $qcmPlus
+          cmMinus = $qcmMinus
+          cmGenMul = $qcmGenMul
+          cmCoeffMul = $qcmCoeffMul
+          cmTranspose = $qcmTranspose
+          cmAbs = $qcmAbs
+          cmMap = $qcmMap
+          cmSignum = $qcmSignum
+          cmScale = $qcmScale
+          cmCopyBlock = $qcmCopyBlock
+        |]
+        where
+          rowsType = litT $ numTyLit $ fromIntegral rows
+          colsType = litT $ numTyLit $ fromIntegral cols
 
-      cmMinus r x y = $(blockMap [RS.r| void {
-          auto r = $mapRW(r);
-          r = $mapR(x) - $mapR(y);
-        } |] (const ( scalarType, cType, m'staticSize )))
+  where
+    qcmPlus = [e|\r x y -> $(blockMap [RS.r| void {
+        auto r= $mapRW(r);
+        r = $mapR(x) + $mapR(y);
+      } |] (const ( scalarType, cType, m'staticSize ))) |]
 
-      cmGenMul r x y = $(blockMap [RS.r| void {
-          auto r = $mapRW(r);
-          r = $mapR(x) * $mapR(y);
-        } |] $ \case
-          "r" -> ( scalarType, cType, m'staticSize )
-          "x" -> ( scalarType, cType, Nothing )
-          "y" -> ( scalarType, cType, Nothing )
-          _ -> error "Unexpected parameter."
-          )
+    qcmMinus = [e|\r x y -> $(blockMap [RS.r| void {
+        auto r = $mapRW(r);
+        r = $mapR(x) - $mapR(y);
+      } |] (const ( scalarType, cType, m'staticSize ))) |]
 
-      cmCoeffMul r x y = $(blockMap [RS.r| void {
-          $mapRW(r).array() = $mapR(x).array() * $mapR(y).array();
-        } |] (const ( scalarType, cType, m'staticSize )))
+    qcmGenMul = [e|\r x y -> $(blockMap [RS.r| void {
+        auto r = $mapRW(r);
+        r = $mapR(x) * $mapR(y);
+      } |] $ \case
+        "r" -> ( scalarType, cType, m'staticSize )
+        "x" -> ( scalarType, cType, Nothing )
+        "y" -> ( scalarType, cType, Nothing )
+        _ -> error "Unexpected parameter."
+        ) |]
 
-      cmTranspose r x = $(blockMap [RS.r| void {
-          auto r = $mapRW(r);
-          r = $mapR(x).transpose();
-        } |] $ \case
-          "r" -> ( scalarType, cType, m'staticSize )
-          "x" -> ( scalarType, cType, (\( rows, cols ) -> ( cols, rows )) <$> m'staticSize )
-          _ -> error "Unexpected parameter."
-          )
+    qcmCoeffMul = [e|\r x y -> $(blockMap [RS.r| void {
+        $mapRW(r).array() = $mapR(x).array() * $mapR(y).array();
+      } |] (const ( scalarType, cType, m'staticSize ))) |]
 
-      cmAbs r x = $(blockMap [RS.r| void {
-          $mapRW(r).array() = $mapR(x).array().abs();
-        } |] (const ( scalarType, cType, m'staticSize )))
+    qcmTranspose = [e|\r x -> $(blockMap [RS.r| void {
+        auto r = $mapRW(r);
+        r = $mapR(x).transpose();
+      } |] $ \case
+        "r" -> ( scalarType, cType, m'staticSize )
+        "x" -> ( scalarType, cType, (\( rows, cols ) -> ( cols, rows )) <$> m'staticSize )
+        _ -> error "Unexpected parameter."
+        ) |]
 
-      cmMap f r x = $(blockMap [RS.r| void {
-          auto r = $mapRW(r);
-          r = $mapR(x).unaryExpr(std::ptr_fun($($type(x) (*f)($type(x)) )));
-        } |] (const ( scalarType, cType, m'staticSize )))
+    qcmAbs = [e|\r x -> $(blockMap [RS.r| void {
+        $mapRW(r).array() = $mapR(x).array().abs();
+      } |] (const ( scalarType, cType, m'staticSize ))) |]
 
-      cmSignum r x = $(blockMap [RS.r| void {
-          auto r = $mapRW(r);
-          auto signum = []($type(x) n) { return n > 0 ? 1 : (n == 0 ? 0 : -1); };
-          r = $mapR(x).unaryExpr(signum);
-        } |] (const ( scalarType, cType, m'staticSize )))
+    qcmMap = [e|\f r x -> $(blockMap [RS.r| void {
+        auto r = $mapRW(r);
+        r = $mapR(x).unaryExpr(std::ptr_fun($($type(x) (*f)($type(x)) )));
+      } |] (const ( scalarType, cType, m'staticSize ))) |]
 
-      cmScale k r x = $(blockMap [RS.r| void {
-          auto r = $mapRW(r);
-          r = $mapR(x) * $($type(x) k);
-        } |] (const ( scalarType, cType, m'staticSize )))
+    qcmSignum = [e|\r x -> $(blockMap [RS.r| void {
+        auto r = $mapRW(r);
+        auto signum = []($type(x) n) { return n > 0 ? 1 : (n == 0 ? 0 : -1); };
+        r = $mapR(x).unaryExpr(signum);
+      } |] (const ( scalarType, cType, m'staticSize ))) |]
 
-      cmCopyBlock r dstRow dstCol x = $(blockMap [RS.r| void {
-          auto src = $mapR(x);
-          $mapRW(r).block($(size_t dstRow), $(size_t dstCol), src.rows(), src.cols()) = src;
-        } |] $ \case
-          "r" -> ( scalarType, cType, m'staticSize )
-          "x" -> ( scalarType, cType, Nothing )
-          _ -> error "Unexpected parameter."
-          )
-  |]
-    where
-      ( constraint, rowsType, colsType ) = case m'staticSize of
-        Nothing -> ( [t|(KnownNat $(mkRowsType), KnownNat $(mkColsType))|], mkRowsType, mkColsType )
-          where
-            mkRowsType = varT (mkName "row")
-            mkColsType = varT (mkName "col")
-        Just ( rows, cols ) ->
-          ( [t|()|]
-          , litT $ numTyLit $ fromIntegral rows
-          , litT $ numTyLit $ fromIntegral cols
-          )
+    qcmScale = [e|\k r x -> $(blockMap [RS.r| void {
+        auto r = $mapRW(r);
+        r = $mapR(x) * $($type(x) k);
+      } |] (const ( scalarType, cType, m'staticSize ))) |]
+
+    qcmCopyBlock = [e|\r dstRow dstCol x -> $(blockMap [RS.r| void {
+        auto src = $mapR(x);
+        $mapRW(r).block($(size_t dstRow), $(size_t dstCol), src.rows(), src.cols()) = src;
+      } |] $ \case
+        "r" -> ( scalarType, cType, m'staticSize )
+        "x" -> ( scalarType, cType, Nothing )
+        _ -> error "Unexpected parameter."
+        ) |]
 
 mkSpecs :: TypeQ -> String -> [ ( Int, Int ) ] -> DecsQ
 mkSpecs scalarType cType staticSizes = do

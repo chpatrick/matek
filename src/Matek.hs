@@ -18,6 +18,7 @@ module Matek
   ( Space(..)
   , dims
   , S
+  , IsMatrix
   , Matrix(..)
   , Vector
   , createM
