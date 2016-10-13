@@ -111,30 +111,8 @@ mkScalar scalarName cScalarName cType =
     instance Scalar $(scalar) where
       type CScalar $(scalar) = $(cScalar)
 
-      cmPlus r x y = $(blockMap [RS.r| void {
-          $mapRW(r) = $mapR(x) + $mapR(y);
-        } |] (const ( scalarName, cType )))
-      cmMinus r x y = $(blockMap [RS.r| void {
-          $mapRW(r) = $mapR(x) - $mapR(y);
-        } |] (const ( scalarName, cType )))
       cmMul r x y = $(blockMap [RS.r| void {
           $mapRW(r) = $mapR(x) * $mapR(y);
-        } |] (const ( scalarName, cType )))
-      cmTranspose r x = $(blockMap [RS.r| void {
-          $mapRW(r) = $mapR(x).transpose();
-        } |] (const ( scalarName, cType )))
-      cmAbs r x = $(blockMap [RS.r| void {
-          $mapRW(r).array() = $mapR(x).array().abs();
-        } |] (const ( scalarName, cType )))
-      cmMap f r x = $(blockMap [RS.r| void {
-          $mapRW(r) = $mapR(x).unaryExpr(std::ptr_fun($($type(x) (*f)($type(x)) )));
-        } |] (const ( scalarName, cType )))
-      cmSignum r x = $(blockMap [RS.r| void {
-          auto signum = []($type(x) n) { return n > 0 ? 1 : (n == 0 ? 0 : -1); };
-          $mapRW(r) = $mapR(x).unaryExpr(signum);
-        } |] (const ( scalarName, cType )))
-      cmScale k r x = $(blockMap [RS.r| void {
-          $mapRW(r) = $mapR(x) * $($type(x) k);
         } |] (const ( scalarName, cType )))
       cmCopyBlock r dstRow dstCol x = $(blockMap [RS.r| void {
           auto src = $mapR(x);

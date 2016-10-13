@@ -12,12 +12,14 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE DeriveFunctor #-}
 
 module Matek
   ( Space(..)
   , dims
   , S
   , Matrix(..)
+  , Deferred(..)
   , IsMatrix
   , Vector
   , createM
@@ -33,17 +35,20 @@ module Matek
   , mMap
   , createCM
   , unsafeWithCM
-  , tr
-  , (!*!)
   , HasNum
-  , (^*)
-  , (*^)
   , FromBlocks
   , fromBlocks
   , CoercibleSpace
   , coerceMatrix
+  , (!*!)
+  , (^*)
+  , (*^)
+  , identity
+  , mapRowMajor
+  , tr
   ) where
 
+import           Control.Applicative
 import           Control.Monad.Cont
 import           Control.Monad.Primitive
 import           Control.Monad.ST
@@ -51,6 +56,7 @@ import           Data.List
 import           Data.Primitive
 import           Data.Proxy
 import           Data.Tagged
+import qualified Data.Vector.Generic as VG
 import qualified Data.Vector.Primitive as VP
 import           Foreign.C
 import           GHC.Ptr
@@ -183,11 +189,11 @@ toRows m@(Matrix ba) =
   | row <- [0..rows m - 1]
   ]
 
-showWith :: IsMatrix row col a => (a -> String) -> Matrix row col a -> String
-showWith showA m = intercalate "\n" formattedRows
+showWith :: (a -> String) -> [ [ a ] ] -> String
+showWith showA matRows = intercalate "\n" formattedRows
   where
     elemStringRows :: [[ String ]]
-    elemStringRows = map (map showA) (toRows m)
+    elemStringRows = map (map showA) matRows
     columnWidths :: [ Int ]
     columnWidths = map (maximum . map length) $ transpose elemStringRows
     formattedRows :: [ String ]
@@ -205,7 +211,7 @@ showWith showA m = intercalate "\n" formattedRows
     addBorder' (x : xs) = ("│" ++ x ++ "│") : addBorder' xs
 
 instance (IsMatrix row col a, ShowScalar a) => Show (Matrix row col a) where
-  show = showWith showScalar
+  show = showWith showScalar . toRows
   showList xs = showString $ "[\n" ++ intercalate ",\n\n" (map show xs) ++ "\n]"
 
 createCM :: forall row col a. IsMatrix row col a => (CMatrix 'RW a -> IO ()) -> Matrix row col a
@@ -239,49 +245,14 @@ binopCM f x y =
         f cr cx cy
 {-# INLINE binopCM #-}
 
-unopCM :: ( Space s1, Space s2, Space s3, Space s4
+_unopCM :: ( Space s1, Space s2, Space s3, Space s4
           , Scalar a, Scalar r
           ) => (CMatrix 'RW r -> CMatrix 'R a -> IO ()) -> Matrix s1 s2 a -> Matrix s3 s4 r
-unopCM f x =
+_unopCM f x =
   createCM $ \cr ->
     unsafeWithCM x $ \cx ->
       f cr cx
-{-# INLINE unopCM #-}
-
-(!*!) :: (Space s1, Space s2, Space s3, Scalar a) => Matrix s3 s2 a -> Matrix s2 s1 a -> Matrix s3 s1 a
-(!*!) = binopCM cmMul
-
--- We want to allow Num on row vectors, column vectors and anonymous matrices,
--- but not on matrices with specific spaces.
-type family HasNum row col where
-  HasNum (S rows) col = 'True
-  HasNum row (S cols) = 'True
-  HasNum row col = 'False
-
-instance (IsMatrix row col a, HasNum row col ~ 'True, Num a) => Num (Matrix row col a) where
-  (+) = binopCM cmPlus
-  (-) = binopCM cmMinus
-  (*) = binopCM cmMul
-  abs = unopCM cmAbs
-  signum = unopCM cmSignum
-  fromInteger x = fromList $ replicate (nRows * nCols) (fromInteger x)
-    where
-      nRows = untag (dims @row)
-      nCols = untag (dims @col)
-
-tr :: IsMatrix row col a => Matrix row col a -> Matrix col row a
-tr = unopCM cmTranspose
-{-# INLINE tr #-}
-
-(*^) :: IsMatrix row col a => a -> Matrix row col a -> Matrix row col a
-k *^ m = unopCM (cmScale (toCScalar k)) m
-{-# INLINE (*^) #-}
-infixl 7 *^
-
-(^*) :: IsMatrix row col a => Matrix row col a -> a -> Matrix row col a
-(^*) = flip (*^)
-{-# INLINE (^*) #-}
-infixl 7 ^*
+{-# INLINE _unopCM #-}
 
 class FromBlocks a where
   type FromBlocksScalar a
@@ -332,3 +303,135 @@ type CoercibleSpace row col otherRow otherCol = ((Dims row * Dims col) ~ (Dims o
 
 coerceMatrix :: CoercibleSpace row col otherRow otherCol => Matrix row col a -> Matrix otherRow otherCol a
 coerceMatrix (Matrix ba) = Matrix ba
+
+newtype Deferred row col a = Deferred (Tagged row Int -> Tagged col Int -> a)
+  deriving (Functor)
+
+evalRowMajor :: forall row col a. (Space row, Space col) => Deferred row col a -> [ [ a ] ]
+evalRowMajor (Deferred f) =
+  [ [ f row col | col <- [pure 0 .. (subtract 1) <$> dims @col] ]
+  | row <- [pure 0 .. (subtract 1) <$> dims @row]
+  ]
+
+instance Applicative (Deferred row col) where
+  pure x = Deferred $ \_ _ -> x
+  {-# INLINE pure #-}
+
+  Deferred f <*> Deferred x = Deferred $ \row col -> f row col (x row col)
+  {-# INLINE (<*>) #-}
+
+instance Num a => Num (Deferred row col a) where
+  (+) = liftA2 (+)
+  {-# INLINE (+) #-}
+  (-) = liftA2 (-)
+  {-# INLINE (-) #-}
+  (*) = liftA2 (*)
+  {-# INLINE (*) #-}
+  abs = fmap abs
+  {-# INLINE abs #-}
+  signum = fmap signum
+  {-# INLINE signum #-}
+  negate = fmap negate
+  {-# INLINE negate #-}
+  fromInteger = pure . fromInteger
+  {-# INLINE fromInteger #-}
+
+-- | Folds over the `Deferred` in row-major order.
+instance (Space row, Space col) => Foldable (Deferred row col) where
+  foldMap f (Deferred df) = mconcat
+    [ f (df row col)
+    | row <- [0..dims @row - 1]
+    , col <- [0..dims @col - 1]
+    ]
+
+instance (ShowScalar a, Space row, Space col) => Show (Deferred row col a) where
+  show = showWith showScalar . evalRowMajor
+  showList xs = showString $ "[\n" ++ intercalate ",\n\n" (map show xs) ++ "\n]"
+
+-- | Create a `Matrix` from a row-major representation in any `VG.Vector`.
+mapRowMajor :: forall v a row col. (VG.Vector v a, IsMatrix row col a) => v a -> Matrix row col a
+mapRowMajor v
+  | fromIntegral (VG.length v) == untag (dims @row) * untag (dims @col) =
+      build $ Deferred $ \row col -> v `VG.unsafeIndex` fromIntegral (untag row * untag (dims @col) + untag col)
+  | otherwise = error "Incorrect number of matrix elements in mapped vector."
+{-# INLINE mapRowMajor #-}
+
+-- | Convert a realized matrix to a deferred representation.
+defer :: forall row col a. IsMatrix row col a => Matrix row col a -> Deferred row col a
+defer (Matrix ba)
+  = Deferred $ \row col -> indexScalar ba (untag row * untag (dims @col) + untag col)
+{-# INLINE[0] defer #-}
+
+-- | Convert a deferred matrix to a realized one, evaluating all components.
+realize :: forall row col a. IsMatrix row col a => Deferred row col a -> Matrix row col a
+realize (Deferred f)
+  = createM $ \mba -> go mba 0 0 0
+    where
+      go :: MutableByteArray s -> Tagged row Int -> Tagged col Int -> Int -> ST s ()
+      go mba row col i
+        | col == dims @col = return ()
+        | otherwise = do
+            writeScalar mba i (f row col)
+            if row == dims @row - 1
+              then go mba 0 (col + 1) (i + 1)
+              else go mba (row + 1) col (i + 1)
+
+build :: forall row col a. IsMatrix row col a => Deferred row col a -> Matrix row col a
+build = realize
+{-# INLINE[1] build #-}
+
+{-# RULES "defer/build" forall d. defer (build d) = d #-}
+
+-- | Lift a unary `Deferred` operation to a `Matrix` operation.
+unopDef :: (Space s1, Space s2, Space s3, Space s4, Scalar a, Scalar b)
+         => (Deferred s1 s2 a -> Deferred s3 s4 b)
+         -> Matrix s1 s2 a -> Matrix s3 s4 b
+unopDef df x = build (df (defer x))
+{-# INLINE unopDef #-}
+
+-- | Lift a binary `Deferred` operation to a `Matrix` operation.
+binopDef :: (Space s1, Space s2, Space s3, Space s4, Space s5, Space s6, Scalar a, Scalar b, Scalar c)
+         => (Deferred s1 s2 a -> Deferred s3 s4 b -> Deferred s5 s6 c)
+         -> Matrix s1 s2 a -> Matrix s3 s4 b -> Matrix s5 s6 c
+binopDef df x y = build (defer x `df` defer y)
+{-# INLINE binopDef #-}
+
+type family HasNum row col where
+  HasNum (S rows) col = 'True
+  HasNum row (S cols) = 'True
+  HasNum row col = 'False
+
+instance (IsMatrix row col a, HasNum row col ~ 'True, Num a) => Num (Matrix row col a) where
+  (+) = binopDef (+)
+  {-# INLINE (+) #-}
+  (-) = binopDef (-)
+  {-# INLINE (-) #-}
+  (*) = binopDef (*)
+  {-# INLINE (*) #-}
+  abs = unopDef abs
+  {-# INLINE abs #-}
+  signum = unopDef signum
+  {-# INLINE signum #-}
+  negate = unopDef negate
+  {-# INLINE negate #-}
+  fromInteger = build . fromInteger
+  {-# INLINE fromInteger #-}
+
+(!*!) :: (Space s1, Space s2, Space s3, Scalar a) => Matrix s3 s2 a -> Matrix s2 s1 a -> Matrix s3 s1 a
+(!*!) = binopCM cmMul
+
+(^*) :: (IsMatrix row col a, Num a) => Matrix row col a -> a -> Matrix row col a
+m ^* k  = unopDef (fmap (*k)) m
+{-# INLINE (^*) #-}
+
+(*^) :: (IsMatrix row col a, Num a) => a -> Matrix row col a -> Matrix row col a
+(*^) = flip (^*)
+{-# INLINE (*^) #-}
+
+tr :: IsMatrix row col a => Matrix row col a -> Matrix col row a
+tr = unopDef $ \(Deferred f) -> Deferred (\row col -> f col row)
+{-# INLINE tr #-}
+
+identity :: (IsMatrix space space a, Num a) => Matrix space space a
+identity = build $ Deferred $ \row col -> if untag row == untag col then 1 else 0
+{-# INLINE identity #-}

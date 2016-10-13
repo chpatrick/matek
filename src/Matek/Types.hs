@@ -77,14 +77,7 @@ class Scalar a where
   indexScalar = indexByteArray
 
   -- Specialized operations on CMatrix a
-  cmPlus :: BinOpCM a
-  cmMinus :: BinOpCM a
   cmMul :: BinOpCM a
-  cmTranspose :: UnOpCM a
-  cmAbs :: UnOpCM a
-  cmSignum :: UnOpCM a
-  cmMap :: FunPtr (CScalar a -> IO (CScalar a)) -> UnOpCM a
-  cmScale :: CScalar a -> UnOpCM a
   -- cmCopyBlock dst dstRow dstCol src
   cmCopyBlock :: CMatrix 'RW a -> CSize -> CSize -> CMatrix 'R a -> IO ()
 
